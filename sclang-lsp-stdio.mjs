@@ -9,16 +9,26 @@ import dgram from 'dgram';
 const localhost = '127.0.0.1';
 const writePort = env['SCLANG_LSP_CLIENTPORT'] || '57210';
 const readPort = env['SCLANG_LSP_SERVERPORT'] || '57211';
+
 // FIXME: remove after debug
 let sclangPath = '/Applications/SuperCollider.app/Contents/MacOS/sclang';
 
-const args = process.argv.slice(2);
+function printUsage()
+{
+  console.log(
+`
+sclang-lsp-stdio [-h] [sclang_path]
 
+Example usage:
+sclang-lsp-stdio /path/to/sclang
+`
+  );
+}
+
+const args = process.argv.slice(2);
 if (args.length > 0) {
-  if (args[0] == '-h') {
-    console.log('sclang-lsp-stdio [-h] [sclang_path]');
-    console.log('\nexample usage:');
-    console.log('sclang-lsp-stdio /path/to/sclang');
+  if (args[0] === '-h') {
+    printUsage();
     process.exit(0);
   } else {
     sclangPath = args[0];
@@ -30,7 +40,6 @@ function processOptions()
   env['SCLANG_LSP_ENABLE'] = '1';
   env['SCLANG_LSP_CLIENTPORT'] = writePort;
   env['SCLANG_LSP_SERVERPORT'] = readPort;
-
   return {
     command: sclangPath,
     args: ['-i', 'vscode'],
@@ -41,14 +50,14 @@ function processOptions()
   }
 }
 
-async function createProcess()
+function createProcess()
 {
   return new Promise((resolve, reject) => {
     const opts = processOptions();
     const proc = spawn(opts.command, opts.args, opts.options);
 
     if (!proc) {
-      reject('Could not start sclang process');
+      reject(new Error('Could not start sclang process'));
     }
 
     proc.stdout.on('data', (data) => {
@@ -59,48 +68,61 @@ async function createProcess()
       }
     });
 
+    proc.on('error', (err) => {
+      reject(new Error(err.stack));
+    });
+
     proc.on('close', (code) => {
       console.log('process exited with: ', code);
     });
   })
 }
 
-const sclang = await createProcess();
+function createServer()
+{
+  return new Promise((resolve, reject) => {
+    const server = dgram.createSocket('udp4');
 
-const server = dgram.createSocket('udp4');
+    server.on('error', (err) => {
+      server.close();
+      reject(new Error(err.stack));
+    });
 
-server.on('error', (err) => {
-  console.log(`server error:\n${err.stack}`);
-  server.close();
-});
+    server.on('message', (data) => {
+      const response = data.toString();
+      stdout.write(response);
+    });
 
-server.on('message', (msg) => {
-  if (msg) {
-    const response = data.toString();
-    // console.log(response);
-    stdout.write(response);
-  }
-});
+    server.bind(readPort, localhost, () => {
+      const address = server.address();
+      console.log(`UDP server listening on ${address.port}`);
+      resolve(server);
+    });
+  });
+}
 
-server.on('listening', () => {
-  const address = server.address();
-  console.log(`UDP server listening on ${address.address}:${address.port}`);
-});
+function createClient()
+{
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(writePort, localhost, () => {
+      console.log(`TCP client connected to ${writePort}`);
+      resolve(client);
+    });
 
-server.bind(readPort, localhost);
+    client.on('error', (err) => {
+      reject(new Error(err.stack));
+    });
+  });
+}
 
-// const client = net.createConnection(writePort, localhost, () => {
-//   console.log('TCP client connected to', writePort);
-// });
-
-// client.on('error', (err) => {
-//   console.error('TCP client error', err);
-// });
-
-stdin.on('data', (data) => {
-  if (data) {
+try {
+  await createProcess();
+  await createServer();
+  const client = await createClient();
+  stdin.on('data', (data) => {
     const request = data.toString();
-    // console.log(request);
     client.write(request);
-  }
-});
+  });
+} catch (e) {
+  console.error(e);
+}
