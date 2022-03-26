@@ -2,6 +2,8 @@
 
 A TCP/stdio wrapper for [LanguageServer.quark](https://github.com/scztt/LanguageServer.quark)
 
+This is a proof of concept, the intention is to rewrite this code using [libuv](https://github.com/libuv/libuv) and not have a runtime dependency on `node`.
+
 ## Dependencies
 
 * `node`
