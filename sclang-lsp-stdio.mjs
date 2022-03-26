@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import { env } from 'process';
 import { stdin, stdout } from 'process';
 import net from 'net';
+import dgram from 'dgram';
 
 const localhost = '127.0.0.1';
 const writePort = env['SCLANG_LSP_CLIENTPORT'] || '57210';
@@ -66,33 +67,35 @@ async function createProcess()
 
 const sclang = await createProcess();
 
-const server = net.createServer((connection) => {
-  console.log('sclang LSP connected');
+const server = dgram.createSocket('udp4');
 
-  connection.on('data', (data) => {
-    if (data) {
-      const response = data.toString();
-      // console.log(response);
-      stdout.write(response);
-    }
-  });
-
-  connection.on('end', () => {
-    console.log('sclang LSP disconnected');
-  });
+server.on('error', (err) => {
+  console.log(`server error:\n${err.stack}`);
+  server.close();
 });
 
-server.listen(readPort, localhost, () => {
-  console.log('TCP server listening on', readPort);
+server.on('message', (msg) => {
+  if (msg) {
+    const response = data.toString();
+    // console.log(response);
+    stdout.write(response);
+  }
 });
 
-const client = net.createConnection(writePort, localhost, () => {
-  console.log('TCP client connected to', writePort);
+server.on('listening', () => {
+  const address = server.address();
+  console.log(`UDP server listening on ${address.address}:${address.port}`);
 });
 
-client.on('error', (err) => {
-  console.error('TCP client error', err);
-});
+server.bind(readPort, localhost);
+
+// const client = net.createConnection(writePort, localhost, () => {
+//   console.log('TCP client connected to', writePort);
+// });
+
+// client.on('error', (err) => {
+//   console.error('TCP client error', err);
+// });
 
 stdin.on('data', (data) => {
   if (data) {
