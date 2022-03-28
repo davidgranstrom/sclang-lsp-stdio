@@ -3,35 +3,53 @@
 import { spawn } from 'child_process';
 import { env } from 'process';
 import { stdin, stdout } from 'process';
-import net from 'net';
 import dgram from 'dgram';
+import fs from 'fs';
 
 const localhost = '127.0.0.1';
 const writePort = env['SCLANG_LSP_CLIENTPORT'] || '57210';
 const readPort = env['SCLANG_LSP_SERVERPORT'] || '57211';
 
-// FIXME: remove after debug
-let sclangPath = '/Applications/SuperCollider.app/Contents/MacOS/sclang';
+let sclangPath;
+let logger = {write: () => {}};
 
 function printUsage()
 {
   console.log(
 `
-sclang-lsp-stdio [-h] [sclang_path]
+sclang-lsp-stdio [sclang_path] [-hd]
 
 Example usage:
 sclang-lsp-stdio /path/to/sclang
+sclang-lsp-stdio /path/to/sclang -d /tmp/log.txt
 `
   );
 }
 
 const args = process.argv.slice(2);
-if (args.length > 0) {
-  if (args[0] === '-h') {
+if (args.length == 0) {
     printUsage();
     process.exit(0);
-  } else {
-    sclangPath = args[0];
+} else {
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '-h':
+        printUsage();
+        process.exit(0);
+        break;
+      case '-d':
+        const outputPath = args[i + 1];
+        if (outputPath === null) {
+          console.error('No file path for debugger');
+          process.exit(-1);
+        }
+        logger = fs.createWriteStream(outputPath);
+        i++;
+        break;
+      default:
+        sclangPath = args[i];
+        break;
+    }
   }
 }
 
@@ -62,7 +80,7 @@ function createProcess()
 
     proc.stdout.on('data', (data) => {
       const str = data.toString();
-      console.log(str);
+      logger.write(str);
       if (str.indexOf('***LSP READY***') != -1) {
         resolve(proc);
       }
@@ -73,7 +91,7 @@ function createProcess()
     });
 
     proc.on('close', (code) => {
-      console.log('process exited with: ', code);
+      logger.write(`process exited with: ${code}\n`);
     });
   })
 }
@@ -95,7 +113,7 @@ function createServer()
 
     server.bind(readPort, localhost, () => {
       const address = server.address();
-      console.log(`UDP server listening on ${address.port}`);
+      logger.write(`UDP server listening on ${address.port}\n`);
       resolve(server);
     });
   });
@@ -112,6 +130,7 @@ try {
   const client = await createClient();
   stdin.on('data', (data) => {
     const request = data.toString();
+    logger.write(request + '\n');
     client.send(request, writePort, localhost);
   });
 } catch (e) {
