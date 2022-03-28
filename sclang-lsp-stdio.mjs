@@ -103,16 +103,7 @@ function createServer()
 
 function createClient()
 {
-  return new Promise((resolve, reject) => {
-    const client = net.createConnection(writePort, localhost, () => {
-      console.log(`TCP client connected to ${writePort}`);
-      resolve(client);
-    });
-
-    client.on('error', (err) => {
-      reject(new Error(err.stack));
-    });
-  });
+  return dgram.createSocket('udp4');
 }
 
 try {
@@ -121,7 +112,7 @@ try {
   const client = await createClient();
   stdin.on('data', (data) => {
     const request = data.toString();
-    client.write(request);
+    client.send(request, writePort, localhost);
   });
 } catch (e) {
   console.error(e);
