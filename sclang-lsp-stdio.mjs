@@ -92,6 +92,7 @@ function createProcess()
 
     proc.on('close', (code) => {
       logger.write(`process exited with: ${code}\n`);
+      process.exit(code);
     });
   })
 }
@@ -108,6 +109,7 @@ function createServer()
 
     server.on('message', (data) => {
       const response = data.toString();
+      logger.write(`[response]: ${response}\n`);
       stdout.write(response);
     });
 
@@ -127,10 +129,10 @@ function createClient()
 try {
   await createProcess();
   await createServer();
-  const client = await createClient();
+  const client = createClient();
   stdin.on('data', (data) => {
     const request = data.toString();
-    logger.write(request + '\n');
+    logger.write(`[request]: ${request}\n`);
     client.send(request, writePort, localhost);
   });
 } catch (e) {
